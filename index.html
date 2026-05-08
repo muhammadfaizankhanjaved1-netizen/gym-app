@@ -134,6 +134,28 @@ h1{font-size:1.8rem;font-weight:700}h2{font-size:1.3rem;font-weight:600}h3{font-
 
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .view-enter{animation:fadeIn .2s ease-out}
+
+/* ── CALENDAR ── */
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cal-nav-btn{background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:10px;font-size:1.1rem;cursor:pointer;line-height:1}
+.cal-nav-btn:active{opacity:.6}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-day-label{text-align:center;font-size:.62rem;color:var(--sub);padding:4px 0;font-weight:600;text-transform:uppercase}
+.cal-day{aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.78rem;font-weight:600;cursor:pointer;transition:transform .1s}
+.cal-day:active{transform:scale(.9)}
+.cal-day.empty{background:transparent;cursor:default;pointer-events:none}
+.cal-day.future{background:var(--card2);color:var(--sub)}
+.cal-day.today-ring{outline:2px solid var(--accent);outline-offset:-2px}
+.cal-day.trained{background:rgba(48,209,88,.25);color:#30d158}
+.cal-day.swapped{background:rgba(255,214,10,.2);color:#ffd60a}
+.cal-day.missed{background:rgba(255,69,58,.15);color:#ff453a}
+.cal-day.restday{background:var(--card);color:var(--sub)}
+.cal-day.bonus{background:rgba(10,132,255,.2);color:#0a84ff}
+.cal-dot{width:4px;height:4px;border-radius:50%;background:currentColor;margin-top:1px;flex-shrink:0}
+.cal-legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;justify-content:center}
+.cal-legend-item{display:flex;align-items:center;gap:4px;font-size:.7rem;color:var(--sub)}
+.cal-legend-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.cal-detail{background:var(--card);border-radius:14px;padding:14px;margin-top:14px;animation:fadeIn .15s ease-out}
 </style>
 </head>
 <body>
@@ -202,6 +224,10 @@ h1{font-size:1.8rem;font-weight:700}h2{font-size:1.3rem;font-weight:600}h3{font-
     <button class="nav-btn" id="nav-weight" onclick="navigate('weight')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
       Vekt
+    </button>
+    <button class="nav-btn" id="nav-calendar" onclick="navigate('calendar')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="8" cy="15" r="1" fill="currentColor"/><circle cx="12" cy="15" r="1" fill="currentColor"/><circle cx="16" cy="15" r="1" fill="currentColor"/></svg>
+      Kalender
     </button>
   </nav>
 </div>
@@ -273,6 +299,7 @@ let currentUser = null;
 let currentView = null;
 let activeWorkout = null;
 let charts = {};
+let calYear, calMonth;
 let userData = { workouts: [], bodyWeight: [] };
 let isOnline = navigator.onLine;
 
@@ -328,6 +355,7 @@ async function refreshData() {
 
 function switchUser() {
   currentUser = null; activeWorkout = null; currentView = null;
+  calYear = undefined; calMonth = undefined;
   destroyCharts();
   document.getElementById('main-app').style.display = 'none';
   document.getElementById('offline-banner').style.display = 'none';
@@ -348,7 +376,7 @@ function updateHeader() {
 // ── NAVIGATION ──
 function navigate(view) {
   currentView = view;
-  ['home','workout','history','stats','weight'].forEach(v =>
+  ['home','workout','history','stats','weight','calendar'].forEach(v =>
     document.getElementById('nav-'+v)?.classList.remove('active'));
   document.getElementById('nav-'+view)?.classList.add('active');
   destroyCharts();
@@ -363,7 +391,8 @@ function renderView(view) {
     case 'workout': el.innerHTML = viewWorkout(); break;
     case 'history': el.innerHTML = viewHistory(); break;
     case 'stats':   el.innerHTML = viewStats(); break;
-    case 'weight':  el.innerHTML = viewWeight(); bindWeight(); break;
+    case 'weight':    el.innerHTML = viewWeight(); bindWeight(); break;
+    case 'calendar':  el.innerHTML = viewCalendar(); break;
   }
 }
 
@@ -699,6 +728,131 @@ async function delWeight(date) {
   data.bodyWeight=data.bodyWeight.filter(w=>w.date!==date);
   await cloudSave(currentUser,data);
   navigate('weight');
+}
+
+// ── CALENDAR ──
+function viewCalendar() {
+  const now = new Date();
+  if (calYear === undefined) calYear = now.getFullYear();
+  if (calMonth === undefined) calMonth = now.getMonth();
+  const data = getData();
+  const today = todayStr();
+
+  const firstDay = new Date(calYear, calMonth, 1);
+  const lastDay = new Date(calYear, calMonth + 1, 0);
+  const monthName = firstDay.toLocaleDateString('no-NO', {month:'long', year:'numeric'});
+
+  const wMap = {};
+  data.workouts.forEach(w => { wMap[w.date] = w; });
+
+  const startDow = (firstDay.getDay() + 6) % 7; // Mon=0
+
+  const dayLabels = ['Man','Tir','Ons','Tor','Fre','Lør','Søn'];
+  let cells = '';
+  for (let i = 0; i < startDow; i++) cells += '<div class="cal-day empty"></div>';
+
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const date = new Date(calYear, calMonth, d);
+    const dateStr = date.toISOString().slice(0, 10);
+    const dow = date.getDay();
+    const sched = SCHEDULE[currentUser][dow];
+    const workout = wMap[dateStr];
+    const isFuture = dateStr > today;
+    const isToday = dateStr === today;
+
+    let cls = '';
+    let dot = '';
+
+    if (workout) {
+      if (sched.rest) {
+        cls = 'bonus';
+      } else if (workout.focus === sched.focus) {
+        cls = 'trained';
+      } else {
+        cls = 'swapped';
+      }
+      dot = '<div class="cal-dot"></div>';
+    } else if (isFuture || isToday) {
+      cls = sched.rest ? 'restday' : 'future';
+    } else {
+      cls = sched.rest ? 'restday' : 'missed';
+    }
+
+    if (isToday) cls += ' today-ring';
+    cells += `<div class="cal-day ${cls}" onclick="showCalDay('${dateStr}')">${d}${dot}</div>`;
+  }
+
+  return `
+  <h2 style="margin-bottom:14px">Kalender</h2>
+  <div class="cal-header">
+    <button class="cal-nav-btn" onclick="calNav(-1)">‹</button>
+    <div style="font-weight:700;text-transform:capitalize">${monthName}</div>
+    <button class="cal-nav-btn" onclick="calNav(1)">›</button>
+  </div>
+  <div class="cal-grid">
+    ${dayLabels.map(l => `<div class="cal-day-label">${l}</div>`).join('')}
+    ${cells}
+  </div>
+  <div class="cal-legend">
+    <div class="cal-legend-item"><div class="cal-legend-dot" style="background:rgba(48,209,88,.5)"></div>Trent som plan</div>
+    <div class="cal-legend-item"><div class="cal-legend-dot" style="background:rgba(255,214,10,.4)"></div>Byttet dag</div>
+    <div class="cal-legend-item"><div class="cal-legend-dot" style="background:rgba(255,69,58,.3)"></div>Ikke trent</div>
+    <div class="cal-legend-item"><div class="cal-legend-dot" style="background:rgba(10,132,255,.3)"></div>Bonusøkt</div>
+    <div class="cal-legend-item"><div class="cal-legend-dot" style="background:var(--card)"></div>Hviledag</div>
+  </div>
+  <div id="cal-detail"></div>`;
+}
+
+function calNav(dir) {
+  calMonth += dir;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderView('calendar');
+}
+
+function showCalDay(dateStr) {
+  const data = getData();
+  const workout = data.workouts.find(w => w.date === dateStr);
+  const date = new Date(dateStr + 'T12:00:00');
+  const dow = date.getDay();
+  const sched = SCHEDULE[currentUser][dow];
+  const today = todayStr();
+  const detail = document.getElementById('cal-detail');
+  if (!detail) return;
+
+  let html = `<div class="cal-detail">
+    <div style="font-weight:700;margin-bottom:6px">${fmtDate(dateStr)} · ${DAYS[dow]}</div>
+    <div class="sub" style="margin-bottom:10px">Plan: ${sched.focus}</div>`;
+
+  if (workout) {
+    const totalSets = workout.exercises.reduce((a, e) => a + e.sets.length, 0);
+    const allW = workout.exercises.flatMap(e => e.sets.map(s => s.weight));
+    const maxW = allW.length ? Math.max(...allW) : 0;
+    html += `<div style="color:var(--success);font-weight:600;margin-bottom:6px">✅ Trent: ${workout.focus}</div>
+    <div class="sub">${workout.exercises.length} øvelser · ${totalSets} sett · Maks ${maxW} kg</div>`;
+    if (!sched.rest && workout.focus !== sched.focus) {
+      html += `<div style="color:#ffd60a;font-size:.8rem;margin-top:6px">🔄 Byttet fra planlagt: ${sched.focus}</div>`;
+    }
+    if (sched.rest) {
+      html += `<div style="color:#0a84ff;font-size:.8rem;margin-top:6px">💪 Bonusøkt på hviledag!</div>`;
+    }
+    html += `<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+      ${workout.exercises.map(ex => `<div style="margin-bottom:6px">
+        <div style="font-weight:600;font-size:.85rem">${ex.name}</div>
+        <div class="sub" style="font-size:.78rem">${ex.sets.map((s,i)=>`S${i+1}: ${s.weight}kg × ${s.reps}`).join(' · ')}</div>
+      </div>`).join('')}
+    </div>`;
+  } else if (dateStr > today) {
+    html += `<div class="sub">Fremtidig dag</div>`;
+  } else if (sched.rest) {
+    html += `<div class="sub">😴 Hviledag</div>`;
+  } else {
+    html += `<div style="color:var(--danger)">❌ Ikke trent denne dagen</div>`;
+  }
+
+  html += '</div>';
+  detail.innerHTML = html;
+  detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function destroyCharts() {
