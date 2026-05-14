@@ -469,8 +469,9 @@ function viewWorkout() {
   const s = todaySched(currentUser);
   if (!activeWorkout) {
     const existing = data.workouts.find(w=>w.date===today);
+    const tmplExs = ((userData.templates||{})[s.focus]||[]).map(name=>({name,sets:[]}));
     activeWorkout = existing ? JSON.parse(JSON.stringify(existing))
-      : {id:uid(), date:today, dayName:DAYS[new Date().getDay()], focus:s.focus, exercises:[]};
+      : {id:uid(), date:today, dayName:DAYS[new Date().getDay()], focus:s.focus, exercises:tmplExs};
   }
   return renderWorkoutForm();
 }
@@ -567,6 +568,10 @@ async function saveWorkout() {
   const data = getData();
   const idx = data.workouts.findIndex(w=>w.id===activeWorkout.id);
   if (idx>=0) data.workouts[idx]=activeWorkout; else data.workouts.push(activeWorkout);
+  if (activeWorkout.exercises.length) {
+    if (!data.templates) data.templates = {};
+    data.templates[activeWorkout.focus] = activeWorkout.exercises.map(e=>e.name);
+  }
   try {
     await cloudSave(currentUser, data);
     const msg = document.getElementById('saved-msg');
@@ -869,20 +874,20 @@ function showCalDay(dateStr) {
   detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-async function logCalWorkout(dateStr, focus) {
+function logCalWorkout(dateStr, focus) {
   const data = getData();
   const date = new Date(dateStr + 'T12:00:00');
   const dow = date.getDay();
   const existing = data.workouts.find(w => w.date === dateStr);
+  const tmplExs = ((userData.templates||{})[focus]||[]).map(name=>({name,sets:[]}));
   if (existing) {
-    existing.focus = focus;
-    existing.dayName = DAYS[dow];
+    activeWorkout = JSON.parse(JSON.stringify(existing));
+    activeWorkout.focus = focus;
+    activeWorkout.dayName = DAYS[dow];
   } else {
-    data.workouts.push({ id: uid(), date: dateStr, dayName: DAYS[dow], focus, exercises: [] });
+    activeWorkout = { id: uid(), date: dateStr, dayName: DAYS[dow], focus, exercises: tmplExs };
   }
-  localStorage.setItem('gymtrack_cache_' + currentUser, JSON.stringify(data));
-  try { await cloudSave(currentUser, data); } catch(e) {}
-  renderView('calendar');
+  navigate('workout');
 }
 
 async function deleteCalWorkout(dateStr) {
