@@ -870,5 +870,10 @@ window.addEventListener('DOMContentLoaded',()=>{
   if (saved) selectUser(saved);
 });
 </script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/gym-app/sw.js');
+}
+</script>
 </body>
 </html>
