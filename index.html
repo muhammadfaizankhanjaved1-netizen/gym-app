@@ -187,11 +187,11 @@ h1{font-size:1.8rem;font-weight:700}h2{font-size:1.3rem;font-weight:600}h3{font-
     <h2>Auguste</h2>
     <div id="us-auguste-today" class="sub"></div>
   </div>
-  <div id="migrate-btn-wrap" style="display:none;width:100%;max-width:300px">
-    <button onclick="sendToNewApp()" style="width:100%;padding:14px;border-radius:14px;border:none;background:linear-gradient(135deg,#1a3a1a,#1a2a3a);border:1px solid rgba(48,209,88,.3);color:#30d158;font-size:.9rem;font-weight:600;cursor:pointer">
+  <div style="width:100%;max-width:300px">
+    <button onclick="sendToNewApp()" style="width:100%;padding:14px;border-radius:14px;border:none;background:linear-gradient(135deg,#1a3a1a,#1a2a3a);border:1.5px solid rgba(48,209,88,.4);color:#30d158;font-size:.9rem;font-weight:600;cursor:pointer">
       📦 Flytt data til ny app →
     </button>
-    <div style="text-align:center;font-size:.72rem;color:#8e8e93;margin-top:6px">Åpner ny app med all din historikk</div>
+    <div id="migrate-status" style="text-align:center;font-size:.72rem;color:#8e8e93;margin-top:6px">Trykk for å flytte all historikk</div>
   </div>
 </div>
 
@@ -327,23 +327,17 @@ async function migrateToNewApp() {
 // Kjør migrasjon i bakgrunnen ved oppstart
 migrateToNewApp();
 
-// Vis "Flytt data"-knapp hvis bin-ID finnes
-function showMigrateBtn() {
-  const id = localStorage.getItem('gymtrack_binid_faizan');
-  const wrap = document.getElementById('migrate-btn-wrap');
-  if (id && wrap) wrap.style.display = 'block';
-}
-
 function sendToNewApp() {
   const id = localStorage.getItem('gymtrack_binid_faizan');
-  if (!id) { alert('Ingen data funnet på denne enheten.'); return; }
-  window.location.href = 'https://gymtracker-6sj.pages.dev?import=' + id;
-}
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', showMigrateBtn);
-} else {
-  showMigrateBtn();
+  const status = document.getElementById('migrate-status');
+  if (!id) {
+    if (status) status.innerHTML = '<span style="color:#ff453a">⚠️ Ingen data lagret på denne enheten. Har du brukt appen her før?</span>';
+    return;
+  }
+  if (status) status.innerHTML = '<span style="color:#30d158">Åpner ny app...</span>';
+  setTimeout(() => {
+    window.location.href = 'https://gymtracker-6sj.pages.dev?import=' + id;
+  }, 400);
 }
 
 
