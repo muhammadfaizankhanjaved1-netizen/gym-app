@@ -241,6 +241,87 @@ h1{font-size:1.8rem;font-weight:700}h2{font-size:1.3rem;font-weight:600}h3{font-
 const BIN_KEY = '$2a$10$YQtpXheoXVrQaXo3Sch4G..IWw/ZuAWYFnc1XPBxa82aBCieCR6XC';
 const BIN_URL = 'https://api.jsonbin.io/v3/b';
 
+// ── NY APP MIGRASJON ──
+// Kopier data fra gammel localStorage-bin til nye faste bins i ny Cloudflare-app
+const NEW_BINS = {
+  faizan:  '6a12a303ee5a733b120e9973',
+  auguste: '6a12a3226877513b27c36295'
+};
+const SCHEDULE_AUG = {
+  0:{focus:'Rygg + armer',rest:false},1:{focus:'Cardio + armer',rest:false},
+  2:{focus:'Bein (front – quad-fokus)',rest:false},3:{focus:'Rygg + armer',rest:false},
+  4:{focus:'Cardio + armer',rest:false},5:{focus:'Hvile 💤',rest:true},
+  6:{focus:'Bein (bak – hamstrings & glutes)',rest:false}
+};
+const DAYS_MIG = ['Søndag','Mandag','Tirsdag','Onsdag','Torsdag','Fredag','Lørdag'];
+
+async function migrateToNewApp() {
+  if (localStorage.getItem('gymtrack_migrated_to_new_app')) return;
+  const oldBinId = localStorage.getItem('gymtrack_binid_faizan');
+  if (!oldBinId) { localStorage.setItem('gymtrack_migrated_to_new_app','1'); return; }
+  try {
+    // Fetch full Faizan data from old bin
+    const res = await fetch(`${BIN_URL}/${oldBinId}/latest`, { headers:{'X-Master-Key':BIN_KEY} });
+    const json = await res.json();
+    const data = json.record;
+    if (!data || !data.workouts) { localStorage.setItem('gymtrack_migrated_to_new_app','1'); return; }
+
+    // Write Faizan's full data (workouts + vekt + templates) to new canonical bin
+    await fetch(`${BIN_URL}/${NEW_BINS.faizan}`, {
+      method:'PUT',
+      headers:{'Content-Type':'application/json','X-Master-Key':BIN_KEY},
+      body: JSON.stringify(data)
+    });
+
+    // Generate Auguste's mirror workouts from Faizan's history
+    const augRes = await fetch(`${BIN_URL}/${NEW_BINS.auguste}/latest`, { headers:{'X-Master-Key':BIN_KEY} });
+    const augJson = await augRes.json();
+    const augExisting = augJson.record || {};
+    const existingDates = new Set((augExisting.workouts||[]).map(w=>w.date));
+
+    const augWorkouts = data.workouts
+      .filter(w => !existingDates.has(w.date))
+      .map(w => {
+        const date = new Date(w.date + 'T12:00:00');
+        const dow = date.getDay();
+        const s = SCHEDULE_AUG[dow];
+        if (s.rest) return null;
+        return {
+          id: 'aug_' + w.id,
+          date: w.date,
+          dayName: DAYS_MIG[dow],
+          focus: s.focus,
+          exercises: w.exercises ? w.exercises.map(ex => ({
+            name: ex.name,
+            sets: ex.sets ? ex.sets.map(set => ({weight: set.weight, reps: set.reps})) : []
+          })) : [],
+          markedTrained: !w.exercises || !w.exercises.length
+        };
+      }).filter(Boolean);
+
+    const augData = {
+      workouts: [...(augExisting.workouts||[]), ...augWorkouts].sort((a,b)=>a.date.localeCompare(b.date)),
+      bodyWeight: augExisting.bodyWeight || [],
+      templates: augExisting.templates || {}
+    };
+
+    await fetch(`${BIN_URL}/${NEW_BINS.auguste}`, {
+      method:'PUT',
+      headers:{'Content-Type':'application/json','X-Master-Key':BIN_KEY},
+      body: JSON.stringify(augData)
+    });
+
+    localStorage.setItem('gymtrack_migrated_to_new_app','1');
+    console.log('✅ Migrasjon til ny app fullført!');
+  } catch(e) {
+    console.error('Migrasjon feilet:', e);
+  }
+}
+
+// Kjør migrasjon i bakgrunnen ved oppstart
+migrateToNewApp();
+
+
 async function getBinId(user) {
   let id = localStorage.getItem('gymtrack_binid_' + user);
   if (id) return id;
